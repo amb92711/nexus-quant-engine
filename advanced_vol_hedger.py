@@ -19,7 +19,6 @@ def send_telegram(text):
     except: pass
 
 class AdvancedVolatilityDesk:
-    """Detects Implied Volatility Surface Anomalies (Volatility Arbitrage)"""
     def __init__(self, summaries):
         self.summaries = summaries
         self.btc = summaries[0].get('estimated_delivery_price', 0) if summaries else 0
@@ -91,13 +90,14 @@ def run_enterprise_engine():
     greeks, h_action, h_size = DeltaNeutralHedger.calculate_hedge(best_anomaly, btc, demo_qty)
     pop, ev = MonteCarloRiskDesk.simulate_trade(best_anomaly, btc)
     
-    best_opt_name = best_anomaly['name']
+    # استخراج نام بدون استفاده از Walrus
+    opt_name_str = best_anomaly['name']
     
     report = f"🏛️ *NEXUS-Q ENTERPRISE: VOLATILITY ARBITRAGE* 🏛️\n"
     report += f"====================================\n\n"
     report += f"🎯 *1. ناهنجاری آماری کشف شد (Anomaly Detected):*\n"
     report += f"صرافی این آپشن را ارزان‌تر از ارزش واقعی‌اش قیمت‌گذاری کرده است!\n"
-    report += f"🔖 قرارداد: `{best_opt_name}`\n"
+    report += f"🔖 قرارداد: `{opt_name_str}`\n"
     report += f"📉 نوسان ضمنی (IV): `{best_anomaly['iv']:.1f}%` (بسیار پایین‌تر از میانگین مارکت)\n"
     report += f"💸 قیمت بلیط: `${best_anomaly['price']:,.2f}`\n\n"
     
