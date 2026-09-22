@@ -3,8 +3,8 @@ import urllib.parse
 from datetime import datetime
 from core_engine.council import QuantCouncil
 
-BOT_TOKEN = "توکن_ربات_شما"
-CHAT_ID = "آیدی_شما"
+BOT_TOKEN = "7604547150:AAFuMGhO3aQbt7SlNa-50FH2M5OoKB2B3HQ"
+CHAT_ID = "6805551911"
 
 def send_telegram(text):
     if BOT_TOKEN == "توکن_ربات_شما":
