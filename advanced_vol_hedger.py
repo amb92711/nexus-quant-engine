@@ -28,7 +28,6 @@ class AdvancedVolatilityDesk:
     def find_volatility_anomalies(self):
         puts, calls = [], []
         
-        # استخراج دیتای تمام قراردادهای 1 تا 7 روزه
         for s in self.summaries:
             parts = s['instrument_name'].split('-')
             if len(parts) != 4: continue
@@ -46,13 +45,11 @@ class AdvancedVolatilityDesk:
             if parts[3] == 'P' and self.btc * 0.8 < strike < self.btc: puts.append(opt_data)
             if parts[3] == 'C' and self.btc < strike < self.btc * 1.2: calls.append(opt_data)
                 
-        # پیدا کردن میانگین نوسانات (IV) برای پیدا کردن ناهنجاری آماری
         avg_put_iv = sum(p['iv'] for p in puts) / len(puts) if puts else 1
         avg_call_iv = sum(c['iv'] for c in calls) / len(calls) if calls else 1
         
-        # ارزان‌ترین آپشن‌ها نسبت به میانگین بازار (آربیتراژ نوسان)
-        underpriced_puts = [p for p in puts if p['iv'] < avg_put_iv * 0.9]
-        underpriced_calls = [c for c in calls if c['iv'] < avg_call_iv * 0.9]
+        underpriced_puts = [p for p in puts if p['iv'] < avg_put_iv * 0.95]
+        underpriced_calls = [c for c in calls if c['iv'] < avg_call_iv * 0.95]
         
         underpriced_puts.sort(key=lambda x: x['iv'])
         underpriced_calls.sort(key=lambda x: x['iv'])
@@ -60,16 +57,11 @@ class AdvancedVolatilityDesk:
         return underpriced_puts, underpriced_calls
 
 class DeltaNeutralHedger:
-    """Calculates the exact Futures Short/Long hedge to isolate Gamma"""
     @staticmethod
     def calculate_hedge(option, btc_price, opt_quantity=0.01):
-        # 1. محاسبه یونانی‌ها با بلک-شولز
         greeks = MathEngine.black_scholes_greeks(btc_price, option['strike'], option['dte']/365.0, 0.05, option['iv']/100.0, option['type'])
         delta = greeks['delta']
         
-        # 2. محاسبه موقعیت خنثی
-        # اگر آپشن خریده شده دلتای 0.45 دارد و سایز 0.01 است، دلتای کل پوزیشن 0.0045+ است.
-        # برای خنثی کردن آن، باید 0.0045 بیت‌کوین شورت شود.
         position_delta = delta * opt_quantity
         hedge_action = "SHORT (فروش)" if position_delta > 0 else "LONG (خرید)"
         hedge_size = abs(position_delta)
@@ -79,13 +71,14 @@ class DeltaNeutralHedger:
 def run_enterprise_engine():
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 🧪 در حال اجرای موتور پیشرفته آربیتراژ نوسان و دلتا-خنثی...")
     summaries = DataIngestion.fetch_deribit_chain()
-    if not summaries: return
+    if not summaries: 
+        print("خطا در دریافت اطلاعات.")
+        return
     
     vol_desk = AdvancedVolatilityDesk(summaries)
     puts, calls = vol_desk.find_volatility_anomalies()
     btc = vol_desk.btc
     
-    # انتخاب بهترین ناهنجاری
     if calls and puts:
         best_anomaly = calls[0] if calls[0]['iv'] < puts[0]['iv'] else puts[0]
     elif calls: best_anomaly = calls[0]
@@ -94,26 +87,25 @@ def run_enterprise_engine():
         send_telegram("💤 بازار کاملاً کارا (Efficient) است. هیچ ناهنجاری قیمتی برای آربیتراژ یافت نشد.")
         return
 
-    # محاسبه هجینگ دلتا-خنثی برای سایز دمو (0.01 BTC)
     demo_qty = 0.01
     greeks, h_action, h_size = DeltaNeutralHedger.calculate_hedge(best_anomaly, btc, demo_qty)
-    
-    # فیلتر مونت کارلو
     pop, ev = MonteCarloRiskDesk.simulate_trade(best_anomaly, btc)
+    
+    best_opt_name = best_anomaly['name']
     
     report = f"🏛️ *NEXUS-Q ENTERPRISE: VOLATILITY ARBITRAGE* 🏛️\n"
     report += f"====================================\n\n"
     report += f"🎯 *1. ناهنجاری آماری کشف شد (Anomaly Detected):*\n"
     report += f"صرافی این آپشن را ارزان‌تر از ارزش واقعی‌اش قیمت‌گذاری کرده است!\n"
-    report += f"🔖 قرارداد: `{best_opt_name := best_anomaly['name']}`\n"
+    report += f"🔖 قرارداد: `{best_opt_name}`\n"
     report += f"📉 نوسان ضمنی (IV): `{best_anomaly['iv']:.1f}%` (بسیار پایین‌تر از میانگین مارکت)\n"
     report += f"💸 قیمت بلیط: `${best_anomaly['price']:,.2f}`\n\n"
     
     report += f"⚖️ *2. هجینگ دلتا-خنثی (Delta-Neutral Strategy):*\n"
-    report += f"شما با این استراتژی، جهتِ بازار (بالا/پایین) را بی‌اثر می‌کنید و فقط از گاما سود می‌برید.\n"
+    report += f"شما با این استراتژی، جهتِ بازار را بی‌اثر می‌کنید و فقط از گاما سود می‌برید.\n"
     report += f"• **گام اول:** خرید آپشن بالا با حجم `{demo_qty}` (ریسک: `${(best_anomaly['price']*demo_qty):,.2f}`)\n"
     report += f"• **گام دوم:** همزمان در فیوچرز بایننس یا دریبیت، مقدار `{h_size:.4f}` بیت‌کوین را `{h_action}` کنید.\n"
-    report += f"*(با این کار، سود/ضرر جهت‌دار شما صفر می‌شود. فقط کافیست بازار نوسان کند تا گامای شما منفجر شود!)*\n\n"
+    report += f"*(سود/ضرر جهت‌دار شما صفر می‌شود. فقط کافیست بازار نوسان کند تا گامای شما منفجر شود!)*\n\n"
     
     report += f"🎲 *3. اعتبارسنجی مونت-کارلو (Risk Check):*\n"
     report += f"• شانس برد (POP): `{pop:.1f}%`\n"
